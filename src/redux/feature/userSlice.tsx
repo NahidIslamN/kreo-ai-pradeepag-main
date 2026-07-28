@@ -68,6 +68,15 @@ export const userApi = baseApi.injectEndpoints({
       invalidatesTags: ["User"],
     }),
 
+    // /admin_dashboard/dashboard-anylizes/
+    adminDashboardAnylizes: builder.query({
+      query: () => ({
+        url: "/admin_dashboard/dashboard-anylizes/",
+        method: "GET",
+      }),
+      providesTags: ["User"],
+    }),
+
   }),
 });
 
@@ -77,5 +86,6 @@ export const {
   useAllUsersQuery,
   useSuspendUserMutation,
   useActivateUserMutation,
-  useToggleUserStatusMutation
+  useToggleUserStatusMutation,
+  useAdminDashboardAnylizesQuery
 } = userApi;

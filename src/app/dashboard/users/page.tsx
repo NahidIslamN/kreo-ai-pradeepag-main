@@ -21,6 +21,14 @@ interface User {
   created_at: string;
   image: string | null;
   status?: boolean;
+  plan?: string;
+  payment?: string;
+  coin_status?: {
+    used: number;
+    left: number;
+  };
+  image_count?: number;
+  video_count?: number;
 }
 
 export default function UsersPage() {
@@ -192,15 +200,17 @@ export default function UsersPage() {
               </thead>
               <tbody>
                 {filteredUsers.map((user) => {
-                  // Fallbacks for missing data properties
-                  const coinsUsed = 0;
-                  const coinsLeft = 100;
-                  const imageGenerations = 0;
-                  const videoGenerations = 0;
-                  const plan = "Free";
-                  const payment = "$0";
+                  const coinsUsed = user.coin_status?.used ?? 0;
+                  const coinsLeft = user.coin_status?.left ?? 0;
+                  const imageGenerations = user.image_count ?? 0;
+                  const videoGenerations = user.video_count ?? 0;
+                  const plan = user.plan ?? "Free";
+                  const payment = user.payment ?? "$0";
 
-                  const avatarUrl = user.image || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.full_name || "User")}&backgroundColor=f9c9c9`;
+                  const totalCoins = coinsUsed + coinsLeft;
+                  const coinsPercentage = totalCoins > 0 ? (coinsUsed / totalCoins) * 100 : 0;
+
+                  const firstLetter = (user.full_name || user.email || "U")[0].toUpperCase();
 
                   return (
                     <tr key={user.id} className="border-b border-[#3E3E3E] hover:bg-white/5 transition-colors group">
@@ -209,15 +219,21 @@ export default function UsersPage() {
                       </td>
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full overflow-hidden bg-[#3E3E3E] shrink-0 border border-white/10">
-                            <Image
-                              width={100}
-                              height={100}
-                              src={avatarUrl}
-                              alt={user.full_name || "User Profile"}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
+                          {user.image ? (
+                            <div className="w-8 h-8 rounded-full overflow-hidden bg-[#3E3E3E] shrink-0 border border-white/10">
+                              <Image
+                                width={100}
+                                height={100}
+                                src={user.image}
+                                alt={user.full_name || "User Profile"}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-[#FF9F05]/10 border border-[#FF9F05]/30 flex items-center justify-center shrink-0 text-[#FF9F05] text-sm font-semibold">
+                              {firstLetter}
+                            </div>
+                          )}
                           <div className="flex flex-col">
                             <span className="text-sm font-medium text-white">
                               {user.full_name || "Anonymous User"}
@@ -239,7 +255,7 @@ export default function UsersPage() {
                           <div className="w-full bg-[#3E3E3E] h-1.5 rounded-full overflow-hidden">
                             <div
                               className="bg-[#FF9F05] h-full rounded-full"
-                              style={{ width: `${(coinsUsed / (coinsUsed + coinsLeft)) * 100}%` }}
+                              style={{ width: `${coinsPercentage}%` }}
                             ></div>
                           </div>
                         </div>
