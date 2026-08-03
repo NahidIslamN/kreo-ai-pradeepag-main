@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { Bell, Menu } from "lucide-react";
@@ -5,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import NotificationDropdown, { NotificationItem } from "./NotificationDropdown";
 import { useSidebar } from "@/contexts/SidebarContext";
-import { useAllUsersQuery } from "@/redux/feature/userSlice";
+import { useAllUsersQuery, useUserProfileQuery } from "@/redux/feature/userSlice";
 
 const MOCK_NOTIFICATIONS: NotificationItem[] = [
   { id: "1", title: "New user registered successfully", time: "2024-03-09 - 10:30 AM" },
@@ -24,6 +25,9 @@ export default function Header() {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>(MOCK_NOTIFICATIONS);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  const { data } = useUserProfileQuery(undefined);
+  console.log(data, 'data of user profile')
 
   // Get dynamic total user count
   const { data: allUsersResponse } = useAllUsersQuery(undefined);
@@ -77,7 +81,7 @@ export default function Header() {
     <header className="h-20 sm:h-24 px-4 sm:px-8 flex items-center justify-between shrink-0 bg-[#242424] rounded-xl mb-6 shadow-sm mx-4 sm:mx-6 mt-4 sm:mt-6">
       {/* Left side Titles & Menu */}
       <div className="flex items-center gap-4">
-        <button 
+        <button
           onClick={() => setIsMobileSidebarOpen(true)}
           className="lg:hidden text-white p-2 hover:bg-white/10 rounded-lg transition-colors"
         >
@@ -99,12 +103,12 @@ export default function Header() {
       <div className="flex items-center gap-4 sm:gap-6">
         {/* User Profile */}
         <div className="flex items-center gap-3 sm:gap-4">
-          <span className="text-white font-medium text-sm sm:text-lg hidden md:block">Aiden Max</span>
+          <span className="text-white font-medium text-sm sm:text-lg hidden md:block">{data?.data?.full_name}</span>
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden border border-[#3E3E3E] bg-[#3E3E3E]">
             {/* Using a placeholder avatar since we don't have the real image asset */}
-            <img 
-              src="https://api.dicebear.com/7.x/notionists/svg?seed=Aiden&backgroundColor=f9c9c9" 
-              alt="Aiden Max" 
+            <img
+              src={data?.data?.image}
+              alt="Aiden Max"
               className="w-full h-full object-cover"
             />
           </div>
@@ -112,11 +116,10 @@ export default function Header() {
 
         {/* Notification Bell Area */}
         <div className="relative" ref={notifRef}>
-          <button 
+          <button
             onClick={() => setIsNotifOpen(!isNotifOpen)}
-            className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white transition-colors ${
-              isNotifOpen ? "bg-[#4a4a4a]" : "bg-[#3E3E3E] hover:bg-[#4a4a4a]"
-            }`}
+            className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white transition-colors ${isNotifOpen ? "bg-[#4a4a4a]" : "bg-[#3E3E3E] hover:bg-[#4a4a4a]"
+              }`}
           >
             <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
             {notifications.length > 0 && (
@@ -127,7 +130,7 @@ export default function Header() {
           </button>
 
           {isNotifOpen && (
-            <NotificationDropdown 
+            <NotificationDropdown
               notifications={notifications}
               onDelete={handleDeleteNotif}
               onRefresh={handleRefreshNotif}

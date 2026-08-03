@@ -1,19 +1,29 @@
+/* eslint-disable @next/next/no-img-element */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/set-state-in-effect */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { X, ImagePlus, Loader2, Video } from "lucide-react";
 import { toast } from "sonner";
-import { TemplateData } from "./TemplateCard";
+import { TemplateData, TemplateFile } from "./TemplateCard";
+import { useAllCategoriesQuery } from "@/redux/feature/categorieSlice";
+
+interface PreviewFile {
+  file: File;
+  preview: string;
+}
 
 interface TemplateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: any, file: File | null, thumbnail: File | null) => void;
+  onSave: (data: any, files: File[], thumbnail: File | null, deletedFileIds: number[], existingFiles: TemplateFile[]) => void;
   template?: TemplateData | null;
   modalTitle: string;
   submitText: string;
   isLoading?: boolean;
   configData?: any;
+  defaultCategory?: string;
+  defaultSubcategory?: string;
+  mediaType?: string;
 }
 
 export default function TemplateModal({
@@ -25,6 +35,9 @@ export default function TemplateModal({
   submitText,
   isLoading = false,
   configData,
+  defaultCategory = "features",
+  defaultSubcategory = "",
+  mediaType = "Video",
 }: TemplateModalProps) {
   const [formData, setFormData] = useState({
     generation_type: "",
@@ -39,23 +52,50 @@ export default function TemplateModal({
     subcategory: "",
   });
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<PreviewFile[]>([]);
   const [selectedThumbnail, setSelectedThumbnail] = useState<File | null>(null);
 
-  const [filePreview, setFilePreview] = useState<string>("");
+  const [existingFiles, setExistingFiles] = useState<TemplateFile[]>([]);
+  const [deletedFileIds, setDeletedFileIds] = useState<number[]>([]);
+
   const [thumbnailPreview, setThumbnailPreview] = useState<string>("");
 
   // Extract config elements
-  const generationTypes = configData?.generation_types || [];
+  const allGenerationTypes = configData?.generation_types || [];
   const statuses = configData?.statuses || [];
   const categories = configData?.categories || [];
-  const dbSubcategories = configData?.db_subcategories || [];
+
+  // Filter generation types based on active mediaType tab
+  const videoGenTypes = ["image_to_video", "video_to_video"];
+  const imageGenTypes = ["text_to_image", "image_to_image"];
+  const generationTypes = allGenerationTypes.filter((gt: any) =>
+    mediaType === "Video"
+      ? videoGenTypes.includes(gt.value)
+      : imageGenTypes.includes(gt.value)
+  );
+
+  const { data: featuresCategories } = useAllCategoriesQuery({ categoryfor: "features" }, { skip: !isOpen });
+  const { data: homeCategories } = useAllCategoriesQuery({ categoryfor: "home" }, { skip: !isOpen });
+  const { data: discoverCategories } = useAllCategoriesQuery({ categoryfor: "discover" }, { skip: !isOpen });
+
+  const dbSubcategories = useMemo(() => {
+    const list: any[] = [];
+    if (featuresCategories?.data) list.push(...featuresCategories.data);
+    if (homeCategories?.data) list.push(...homeCategories.data);
+    if (discoverCategories?.data) list.push(...discoverCategories.data);
+    return list;
+  }, [featuresCategories, homeCategories, discoverCategories]);
 
   // Reset form when modal opens or template changes
   useEffect(() => {
     if (isOpen) {
-      setSelectedFile(null);
+      // Revoke old previews to prevent memory leaks
+      setSelectedFiles((prev) => {
+        prev.forEach((f) => URL.revokeObjectURL(f.preview));
+        return [];
+      });
       setSelectedThumbnail(null);
+      setDeletedFileIds([]);
 
       if (template) {
         setFormData({
@@ -70,12 +110,17 @@ export default function TemplateModal({
           category: template.category || "",
           subcategory: template.subcategory ? String(template.subcategory) : "",
         });
-        setFilePreview(template.imageUrl || "");
+        setExistingFiles(template.files || []);
         setThumbnailPreview(template.thumbnailUrl || "");
       } else {
-        // Pre-populate with first available options if any
+        // Pre-populate with first available options based on filtered generation types
+        const filteredGenTypes = allGenerationTypes.filter((gt: any) =>
+          mediaType === "Video"
+            ? videoGenTypes.includes(gt.value)
+            : imageGenTypes.includes(gt.value)
+        );
         setFormData({
-          generation_type: generationTypes[0]?.value || "",
+          generation_type: filteredGenTypes[0]?.value || "",
           task_type: "",
           model_name: "",
           title: "",
@@ -83,14 +128,14 @@ export default function TemplateModal({
           prompt: "",
           credit_cost: 0,
           status: "active",
-          category: categories[0]?.value || "",
-          subcategory: "",
+          category: defaultCategory || categories[0]?.value || "",
+          subcategory: defaultSubcategory || "",
         });
-        setFilePreview("");
+        setExistingFiles([]);
         setThumbnailPreview("");
       }
     }
-  }, [isOpen, template, configData]);
+  }, [isOpen, template, configData, defaultCategory, defaultSubcategory]);
 
   // Dynamically derive task types based on selected generation type
   const activeGenType = generationTypes.find((gt: any) => gt.value === formData.generation_type);
@@ -121,7 +166,7 @@ export default function TemplateModal({
     const tasks = activeGen?.task_types || [];
     const activeTask = tasks.find((tt: any) => tt.value === formData.task_type);
     const models = activeTask?.models || [];
-    
+
     if (isOpen) {
       if (models.length > 0) {
         if (!models.some((m: any) => m.value === formData.model_name)) {
@@ -154,9 +199,10 @@ export default function TemplateModal({
     if (isOpen) {
       if (subs.length > 0) {
         if (!subs.some((sub: any) => String(sub.id) === formData.subcategory)) {
+          const hasDefault = defaultSubcategory && subs.some((sub: any) => String(sub.id) === defaultSubcategory);
           setFormData((prev) => ({
             ...prev,
-            subcategory: String(subs[0].id),
+            subcategory: hasDefault ? String(defaultSubcategory) : String(subs[0].id),
           }));
         }
       } else {
@@ -168,7 +214,7 @@ export default function TemplateModal({
         }
       }
     }
-  }, [formData.category, dbSubcategories, isOpen]);
+  }, [formData.category, dbSubcategories, formData.subcategory, isOpen, defaultSubcategory]);
 
   if (!isOpen) return null;
 
@@ -203,12 +249,38 @@ export default function TemplateModal({
     );
   };
 
+  const handleRemoveExistingFile = (id: number) => {
+    setExistingFiles((prev) => prev.filter((f) => f.id !== id));
+    setDeletedFileIds((prev) => [...prev, id]);
+  };
+
+  const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files).map((file) => ({
+        file,
+        preview: URL.createObjectURL(file),
+      }));
+      setSelectedFiles((prev) => [...prev, ...newFiles]);
+    }
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prev) => {
+      const target = prev[index];
+      if (target) {
+        URL.revokeObjectURL(target.preview);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validate required files
-    if (isFieldRequired("files") && isFilesFieldNeeded() && !template && !selectedFile) {
-      toast.error("Please upload the main template media file (Video/Image).");
+    const totalFilesCount = existingFiles.length + selectedFiles.length;
+    if (isFieldRequired("files") && isFilesFieldNeeded() && totalFilesCount === 0) {
+      toast.error("Please upload the main template media file(s) (Video/Image).");
       return;
     }
     if (isFieldRequired("thumbnail") && isThumbnailFieldNeeded() && !template && !selectedThumbnail) {
@@ -221,8 +293,10 @@ export default function TemplateModal({
         id: template?.id || "new",
         ...formData,
       },
-      selectedFile,
-      selectedThumbnail
+      selectedFiles.map((f) => f.file),
+      selectedThumbnail,
+      deletedFileIds,
+      existingFiles
     );
   };
 
@@ -256,44 +330,87 @@ export default function TemplateModal({
                     <label className="text-sm font-medium text-white flex items-center gap-1">
                       Template Media {isFieldRequired("files") && <span className="text-[#FF4C4C]">*</span>}
                     </label>
-                    <div className="w-full aspect-video bg-[#242424] border border-dashed border-[#555555] rounded-xl flex flex-col items-center justify-center text-[#A3A3A3] cursor-pointer hover:bg-[#2A2A2A] transition-colors relative overflow-hidden group min-h-[140px]">
-                      {filePreview ? (
-                        <>
-                          {isVideoFile(selectedFile || filePreview) ? (
-                            <video
-                              src={filePreview}
-                              className="w-full h-full object-cover"
-                              autoPlay
-                              loop
-                              muted
-                              playsInline
+
+                    {selectedFiles.length === 0 && existingFiles.length === 0 ? (
+                      <div className="w-full aspect-video bg-[#242424] border border-dashed border-[#555555] rounded-xl flex flex-col items-center justify-center text-[#A3A3A3] cursor-pointer hover:bg-[#2A2A2A] transition-colors relative overflow-hidden group min-h-[140px]">
+                        <Video className="w-6 h-6 mb-2 opacity-50" />
+                        <span className="text-xs font-medium text-center px-4">Upload Media Files<br />(Multiple allowed)</span>
+                        <input
+                          type="file"
+                          multiple
+                          accept="video/*,image/*"
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          onChange={handleFilesChange}
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        <div className="grid grid-cols-2 gap-3 max-h-[220px] overflow-y-auto pr-1">
+                          {existingFiles.map((existingFile, idx) => (
+                            <div key={`existing-${existingFile.id || idx}`} className="relative aspect-video rounded-xl overflow-hidden bg-[#242424] border border-[#3E3E3E] group">
+                              {isVideoFile(existingFile.file) ? (
+                                <video
+                                  src={existingFile.file}
+                                  className="w-full h-full object-cover"
+                                  autoPlay
+                                  loop
+                                  muted
+                                  playsInline
+                                />
+                              ) : (
+                                <img src={existingFile.file} alt="Existing Preview" className="w-full h-full object-cover" />
+                              )}
+                              <span className="absolute bottom-1.5 left-1.5 text-[10px] bg-black/70 text-white font-medium px-2 py-0.5 rounded-full border border-white/10">
+                                Existing
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExistingFile(existingFile.id)}
+                                className="absolute top-1.5 right-1.5 w-6 h-6 bg-red-600/90 text-white hover:bg-red-600 rounded-full flex items-center justify-center shadow-lg transition-colors cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+
+                          {selectedFiles.map((item, index) => (
+                            <div key={`new-${index}`} className="relative aspect-video rounded-xl overflow-hidden bg-[#242424] border border-[#3E3E3E] group">
+                              {isVideoFile(item.file) ? (
+                                <video
+                                  src={item.preview}
+                                  className="w-full h-full object-cover"
+                                  autoPlay
+                                  loop
+                                  muted
+                                  playsInline
+                                />
+                              ) : (
+                                <img src={item.preview} alt="New Preview" className="w-full h-full object-cover" />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveFile(index)}
+                                className="absolute top-1.5 right-1.5 w-6 h-6 bg-red-600/90 text-white hover:bg-red-600 rounded-full flex items-center justify-center shadow-lg transition-colors cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+
+                          <div className="relative aspect-video rounded-xl overflow-hidden bg-[#242424] border border-dashed border-[#555555] flex flex-col items-center justify-center text-[#A3A3A3] hover:bg-[#2A2A2A] hover:border-white/30 transition-all cursor-pointer min-h-[70px]">
+                            <ImagePlus className="w-5 h-5 mb-1 opacity-70" />
+                            <span className="text-[10px] font-medium">Add Files</span>
+                            <input
+                              type="file"
+                              multiple
+                              accept="video/*,image/*"
+                              className="absolute inset-0 opacity-0 cursor-pointer"
+                              onChange={handleFilesChange}
                             />
-                          ) : (
-                            <img src={filePreview} alt="Media Preview" className="w-full h-full object-cover" />
-                          )}
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                            <span className="text-white text-xs font-medium">Change Media</span>
                           </div>
-                        </>
-                      ) : (
-                        <>
-                          <Video className="w-6 h-6 mb-2 opacity-50" />
-                          <span className="text-xs font-medium">Upload Media (Video/Image)</span>
-                        </>
-                      )}
-                      <input
-                        type="file"
-                        accept="video/*,image/*"
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            const file = e.target.files[0];
-                            setSelectedFile(file);
-                            setFilePreview(URL.createObjectURL(file));
-                          }
-                        }}
-                      />
-                    </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
@@ -95,19 +96,37 @@ export default function TemplatesPage() {
   const currentList: TemplateData[] = useMemo(() => {
     const list = allTemplateAdminData?.data || [];
 
-    const matchesMediaType = (genType: string) => {
-      const gt = (genType || "").toLowerCase();
+    const matchesMediaType = (item: any) => {
+      const ct = (item.content_type || "").toLowerCase();
+      if (ct) {
+        return ct === mediaType.toLowerCase();
+      }
+      const gt = (item.generation_type || "").toLowerCase();
       if (mediaType === "Video") {
-        return gt.startsWith("video");
+        return gt.startsWith("video") || gt.endsWith("video");
       } else {
         return gt.startsWith("image") || gt.startsWith("text");
       }
     };
 
     const filteredList = list.filter((item: any) => {
-      const matchesCategory = item.category === categoryfor;
-      const matchesSubcategory = String(item.subcategory) === String(currentActiveCat);
-      const matchesGenType = matchesMediaType(item.generation_type);
+      // Safe category retrieval: prefer subcategory_detail.categoryfor to handle mismatches
+      const itemCategory = item.subcategory_detail?.categoryfor
+        ? String(item.subcategory_detail.categoryfor)
+        : (typeof item.category === "object" && item.category !== null
+            ? String(item.category.value || item.category.id || "")
+            : String(item.category || ""));
+
+      // Safe subcategory retrieval
+      const itemSubcatId = item.subcategory_detail?.id
+        ? String(item.subcategory_detail.id)
+        : (typeof item.subcategory === "object" && item.subcategory !== null
+            ? String(item.subcategory.id)
+            : String(item.subcategory || ""));
+
+      const matchesCategory = itemCategory === categoryfor;
+      const matchesSubcategory = itemSubcatId === String(currentActiveCat);
+      const matchesGenType = matchesMediaType(item);
       return matchesCategory && matchesSubcategory && matchesGenType;
     });
 
@@ -121,11 +140,12 @@ export default function TemplatesPage() {
       prompt: item.prompt || "",
       credit_cost: item.credit_cost || 0,
       status: item.status || "active",
-      category: item.category || "",
-      subcategory: item.subcategory ? String(item.subcategory) : "",
+      category: item.subcategory_detail?.categoryfor || item.category || "",
+      subcategory: item.subcategory_detail?.id ? String(item.subcategory_detail.id) : (item.subcategory ? String(item.subcategory) : ""),
       imageUrl: item.files?.[0]?.file || "",
       thumbnailUrl: item.thumbnail_url || item.files?.[0]?.thumbnail || "",
       content_type: item.content_type || "",
+      files: item.files || [],
     }));
   }, [allTemplateAdminData, mediaType, categoryfor, currentActiveCat]);
 
@@ -178,7 +198,7 @@ export default function TemplatesPage() {
     setIsModalOpen(true);
   };
 
-  const handleSaveTemplate = async (data: any, file: File | null, thumbnail: File | null) => {
+  const handleSaveTemplate = async (data: any, files: File[], thumbnail: File | null, deletedFileIds: number[], existingFiles: any[]) => {
     const isNew = data.id === "new";
     try {
       const formData = new FormData();
@@ -194,11 +214,43 @@ export default function TemplatesPage() {
       formData.append("category", data.category);
       formData.append("subcategory", String(data.subcategory));
 
-      if (file) {
-        formData.append("files", file);
+      // Fetch remaining existing files as binary File objects to prevent backend type validation failures
+      const existingFileObjs: File[] = [];
+      if (existingFiles && existingFiles.length > 0) {
+        for (const extFile of existingFiles) {
+          if (extFile.file) {
+            try {
+              const res = await fetch(extFile.file);
+              const blob = await res.blob();
+              const filename = extFile.file.substring(extFile.file.lastIndexOf("/") + 1).split("?")[0] || "existing_file";
+              const file = new File([blob], filename, { type: blob.type });
+              existingFileObjs.push(file);
+            } catch (err) {
+              console.error("Failed to fetch existing file as binary:", err);
+            }
+          }
+        }
+      }
+
+      if (files && files.length > 0) {
+        files.forEach((file) => {
+          formData.append("files", file);
+        });
+      }
+      if (existingFileObjs.length > 0) {
+        existingFileObjs.forEach((file) => {
+          formData.append("files", file);
+        });
       }
       if (thumbnail) {
         formData.append("thumbnail", thumbnail);
+      }
+      if (deletedFileIds && deletedFileIds.length > 0) {
+        deletedFileIds.forEach((id) => {
+          formData.append("delete_files", String(id));
+          formData.append("remove_files", String(id));
+          formData.append("deleted_file_ids", String(id));
+        });
       }
 
       let result;
@@ -481,6 +533,9 @@ export default function TemplatesPage() {
         submitText={editingTemplate ? "Save Changes" : "Add Now"}
         isLoading={isCreating || isUpdating}
         configData={templateConfigData?.data}
+        defaultCategory={categoryfor}
+        defaultSubcategory={currentActiveCat}
+        mediaType={mediaType}
       />
 
       {/* DELETE CATEGORY CONFIRMATION MODAL */}
