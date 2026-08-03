@@ -27,31 +27,38 @@ export default function LoginPage() {
             const res = await login({ email, password }).unwrap();
             console.log("Login response:", res);
             if (res.success) {
-                setSuccessMsg(res.message || "Login successful!");
-                toast.success(res.message || "Login successful!");
-
-                const accessToken = res.data?.access;
                 const user = res.data?.user;
+                const accessToken = res.data?.access;
 
-                if (accessToken) {
-                    localStorage.setItem("accessToken", accessToken);
-                    dispatch(setToken(accessToken));
+                // Check if user is an admin
+                if (user?.user_type === "admin") {
+                    setSuccessMsg(res.message || "Login successful!");
+                    toast.success(res.message || "Login successful!");
+
+                    if (accessToken) {
+                        localStorage.setItem("accessToken", accessToken);
+                        dispatch(setToken(accessToken));
+                    }
+
+                    if (user) {
+                        localStorage.setItem("user", JSON.stringify(user));
+                        dispatch(setUser(user));
+                    }
+
+                    router.push("/dashboard");
+                } else {
+                    const msg = "Access Denied: Only Admin users can access the dashboard.";
+                    setErrorMsg(msg);
+                    toast.error(msg);
                 }
-
-                if (user) {
-                    localStorage.setItem("user", JSON.stringify(user));
-                    dispatch(setUser(user));
-                }
-
-                router.push("/dashboard");
             } else {
-                const msg = res.message || "username or password Invalid!";
+                const msg = res.message || "Username or password invalid!";
                 setErrorMsg(msg);
                 toast.error(msg);
             }
         } catch (error: any) {
             console.error("Login error:", error);
-            const msg = error?.data?.message || error?.message || "username or password Invalid!";
+            const msg = error?.data?.message || error?.message || "Username or password invalid!";
             setErrorMsg(msg);
             toast.error(msg);
         }

@@ -1,19 +1,58 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { Lock, Eye, EyeOff } from "lucide-react";
+import { Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useResetPasswordMutation } from "@/redux/feature/authSlice";
+import { toast } from "sonner";
 
 export default function SetPasswordPage() {
     const router = useRouter();
     const [showPassword, setShowPassword] = useState(false);
     const [password, setPassword] = useState("");
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const [resetPassword, { isLoading }] = useResetPasswordMutation();
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log("Setting password...");
-        // Handle password reset
-        router.push("/auth/login"); // Redirect to login after successful reset
+        setErrorMsg(null);
+        setSuccessMsg(null);
+
+        if (password.length < 6) {
+            setErrorMsg("Password must be at least 6 characters long.");
+            toast.error("Password must be at least 6 characters long.");
+            return;
+        }
+
+        try {
+            const res = await resetPassword({ new_password: password }).unwrap();
+            console.log("Reset password response:", res);
+
+            if (res.success) {
+                setSuccessMsg(res.message || "Password reset successfully!");
+                toast.success(res.message || "Password reset successfully!");
+
+                // Clean up the verification token
+                localStorage.removeItem("verificationToken");
+
+                // Redirect to login after a brief delay
+                setTimeout(() => {
+                    router.push("/auth/login");
+                }, 1500);
+            } else {
+                const msg = res.message || "Failed to reset password. Please try again.";
+                setErrorMsg(msg);
+                toast.error(msg);
+            }
+        } catch (error: any) {
+            console.error("Reset password error:", error);
+            const msg = error?.data?.message || error?.message || "Failed to reset password. Please try again.";
+            setErrorMsg(msg);
+            toast.error(msg);
+        }
     };
 
     return (
@@ -26,6 +65,26 @@ export default function SetPasswordPage() {
                     Create a strong password to secure your account.
                 </p>
             </div>
+
+            {errorMsg && (
+                <div className="flex items-start gap-3 p-4 mb-6 bg-red-500/15 border border-red-500/30 text-red-400 rounded-xl transition-all duration-300">
+                    <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                    <div>
+                        <p className="font-semibold text-sm">Error</p>
+                        <p className="text-xs text-red-400/90 mt-0.5">{errorMsg}</p>
+                    </div>
+                </div>
+            )}
+
+            {successMsg && (
+                <div className="flex items-start gap-3 p-4 mb-6 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded-xl transition-all duration-300">
+                    <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
+                    <div>
+                        <p className="font-semibold text-sm">Success</p>
+                        <p className="text-xs text-emerald-400/90 mt-0.5">{successMsg}</p>
+                    </div>
+                </div>
+            )}
 
             <form onSubmit={handleSubmit} className="flex flex-col w-full space-y-8">
                 {/* Password Field */}
@@ -62,9 +121,10 @@ export default function SetPasswordPage() {
                 {/* Submit Button */}
                 <button
                     type="submit"
-                    className="w-full bg-white text-[#242424] font-medium text-[16px] py-4 rounded-[24px] hover:bg-gray-100 hover:scale-[1.01] active:scale-[0.99] transition-all duration-200 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+                    disabled={isLoading}
+                    className="w-full bg-white text-[#242424] font-medium text-[16px] py-4 rounded-[24px] hover:bg-gray-100 hover:scale-[1.01] active:scale-[0.99] transition-all duration-200 shadow-[0_0_15px_rgba(255,255,255,0.1)] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                    Set New Password
+                    {isLoading ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : "Set New Password"}
                 </button>
             </form>
         </div>

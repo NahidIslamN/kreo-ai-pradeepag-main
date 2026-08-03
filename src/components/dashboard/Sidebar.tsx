@@ -21,7 +21,7 @@ const NAV_ITEMS = [
   { name: "Users", href: "/dashboard/users", icon: Users },
   // { name: "Plan & Pricing", href: "/dashboard/plan", icon: CreditCard },
   { name: "FAQ", href: "/dashboard/faq", icon: HelpCircle },
-  { name: "Legacy & Policy", href: "/dashboard/policy", icon: ShieldCheck },
+  { name: "Manage Policy", href: "/dashboard/policy", icon: ShieldCheck },
   { name: "Manage Template", href: "/dashboard/templates", icon: Settings },
 ];
 

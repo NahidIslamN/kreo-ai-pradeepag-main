@@ -1,12 +1,57 @@
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useVerifyEmailMutation, useForgotPasswordMutation } from "@/redux/feature/authSlice";
+import { Loader2, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 
 export default function VerifyMail() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const email = searchParams.get("email") || "";
+
     const [otp, setOtp] = useState(["", "", "", "", "", ""]);
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [countdown, setCountdown] = useState(60);
+    const [canResend, setCanResend] = useState(false);
+
+    const [verifyEmail, { isLoading }] = useVerifyEmailMutation();
+    const [forgotPassword, { isLoading: isResending }] = useForgotPasswordMutation();
+
+    // Countdown timer
+    useEffect(() => {
+        if (countdown <= 0) {
+            setCanResend(true);
+            return;
+        }
+        const timer = setInterval(() => {
+            setCountdown((prev) => prev - 1);
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [countdown]);
+
+    const handleResendOtp = useCallback(async () => {
+        if (!email) return;
+        setCanResend(false);
+        setCountdown(60);
+        setErrorMsg(null);
+
+        try {
+            const res = await forgotPassword({ email }).unwrap();
+            if (res.success) {
+                toast.success(res.message || "OTP resent successfully!");
+            } else {
+                toast.error(res.message || "Failed to resend OTP.");
+            }
+        } catch (error: any) {
+            const msg = error?.data?.message || error?.message || "Failed to resend OTP.";
+            toast.error(msg);
+        }
+    }, [email, forgotPassword]);
 
     const handleChange = (index: number, value: string) => {
         // Only allow numbers
@@ -44,12 +89,42 @@ export default function VerifyMail() {
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setErrorMsg(null);
+
         const otpString = otp.join("");
-        console.log("Submitting OTP:", otpString);
-        router.push(`/auth/set-password`);
-        // Proceed with verification...
+        if (otpString.length !== 6) {
+            setErrorMsg("Please enter the complete 6-digit OTP.");
+            toast.error("Please enter the complete 6-digit OTP.");
+            return;
+        }
+
+        try {
+            const res = await verifyEmail({ email, otp: otpString }).unwrap();
+            console.log("Verify email response:", res);
+
+            if (res.success) {
+                toast.success(res.message || "Email verified successfully!");
+
+                // Store the verification token for reset password
+                const accessToken = res.data?.access;
+                if (accessToken) {
+                    localStorage.setItem("verificationToken", accessToken);
+                }
+
+                router.push("/auth/set-password");
+            } else {
+                const msg = res.message || "Invalid OTP. Please try again.";
+                setErrorMsg(msg);
+                toast.error(msg);
+            }
+        } catch (error: any) {
+            console.error("Verify email error:", error);
+            const msg = error?.data?.message || error?.message || "Invalid OTP. Please try again.";
+            setErrorMsg(msg);
+            toast.error(msg);
+        }
     };
 
     return (
@@ -59,9 +134,25 @@ export default function VerifyMail() {
                     OTP
                 </h2>
                 <p className="text-white text-sm md:text-base leading-relaxed">
-                    We&apos;ve sent a 6-digit verification code to your email address. Enter the code below to continue.
+                    We&apos;ve sent a 6-digit verification code to{" "}
+                    {email ? (
+                        <span className="font-medium text-[#FF9F05]">{email}</span>
+                    ) : (
+                        "your email address"
+                    )}
+                    . Enter the code below to continue.
                 </p>
             </div>
+
+            {errorMsg && (
+                <div className="flex items-start gap-3 p-4 mb-6 bg-red-500/15 border border-red-500/30 text-red-400 rounded-xl transition-all duration-300">
+                    <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                    <div>
+                        <p className="font-semibold text-sm">Verification Failed</p>
+                        <p className="text-xs text-red-400/90 mt-0.5">{errorMsg}</p>
+                    </div>
+                </div>
+            )}
 
             <form onSubmit={handleSubmit} className="flex flex-col w-full space-y-8">
 
@@ -95,18 +186,30 @@ export default function VerifyMail() {
 
                     {/* Timer / Resend */}
                     <div className="flex justify-center pt-2">
-                        <p className="text-white text-sm">
-                            Resend code after <span className="text-[#FF9F05] font-medium">60s</span>
-                        </p>
+                        {canResend ? (
+                            <button
+                                type="button"
+                                onClick={handleResendOtp}
+                                disabled={isResending}
+                                className="text-[#FF9F05] font-medium text-sm hover:text-[#FF9F05]/80 transition-colors disabled:opacity-50"
+                            >
+                                {isResending ? "Resending..." : "Resend OTP"}
+                            </button>
+                        ) : (
+                            <p className="text-white text-sm">
+                                Resend code after <span className="text-[#FF9F05] font-medium">{countdown}s</span>
+                            </p>
+                        )}
                     </div>
                 </div>
 
                 {/* Verify Button */}
                 <button
                     type="submit"
-                    className="w-full bg-white text-[#242424] font-medium text-[16px] py-4 rounded-[24px] hover:bg-gray-100 hover:scale-[1.01] active:scale-[0.99] transition-all duration-200 mt-4 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+                    disabled={isLoading}
+                    className="w-full bg-white text-[#242424] font-medium text-[16px] py-4 rounded-[24px] hover:bg-gray-100 hover:scale-[1.01] active:scale-[0.99] transition-all duration-200 mt-4 shadow-[0_0_15px_rgba(255,255,255,0.1)] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                    Verify Now
+                    {isLoading ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : "Verify Now"}
                 </button>
             </form>
         </div>

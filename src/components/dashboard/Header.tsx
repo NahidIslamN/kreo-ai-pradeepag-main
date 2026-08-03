@@ -70,7 +70,7 @@ export default function Header() {
     title = "FAQ Question";
     subtitle = "";
   } else if (pathname === "/dashboard/policy") {
-    title = "Legacy Policy";
+    title = "Manage Policy";
     subtitle = "";
   } else if (pathname === "/dashboard/templates") {
     title = "Manage Template";
@@ -115,7 +115,7 @@ export default function Header() {
         </div>
 
         {/* Notification Bell Area */}
-        <div className="relative" ref={notifRef}>
+        {/* <div className="relative" ref={notifRef}>
           <button
             onClick={() => setIsNotifOpen(!isNotifOpen)}
             className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white transition-colors ${isNotifOpen ? "bg-[#4a4a4a]" : "bg-[#3E3E3E] hover:bg-[#4a4a4a]"
@@ -137,7 +137,7 @@ export default function Header() {
               onClose={() => setIsNotifOpen(false)}
             />
           )}
-        </div>
+        </div> */}
       </div>
     </header>
   );

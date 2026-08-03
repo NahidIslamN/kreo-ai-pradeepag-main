@@ -11,6 +11,7 @@ interface User {
   username?: string | null;
   image?: string;
   role?: string;
+  user_type?: string;
   [key: string]: any;
 }
 
@@ -104,7 +105,7 @@ export const authApi = baseApi.injectEndpoints({
     resetPassword: builder.mutation({
       query: (data) => {
         return {
-          url: "auth/reset-password",
+          url: "/auth/reset-password",
           method: "POST",
           body: data,
           headers: {
