@@ -74,17 +74,14 @@ export default function TemplateModal({
       : imageGenTypes.includes(gt.value)
   );
 
-  const { data: featuresCategories } = useAllCategoriesQuery({ categoryfor: "features" }, { skip: !isOpen });
-  const { data: homeCategories } = useAllCategoriesQuery({ categoryfor: "home" }, { skip: !isOpen });
-  const { data: discoverCategories } = useAllCategoriesQuery({ categoryfor: "discover" }, { skip: !isOpen });
+  const { data: activeCategoryData } = useAllCategoriesQuery(
+    { categoryfor: formData.category },
+    { skip: !isOpen || !formData.category }
+  );
 
-  const dbSubcategories = useMemo(() => {
-    const list: any[] = [];
-    if (featuresCategories?.data) list.push(...featuresCategories.data);
-    if (homeCategories?.data) list.push(...homeCategories.data);
-    if (discoverCategories?.data) list.push(...discoverCategories.data);
-    return list;
-  }, [featuresCategories, homeCategories, discoverCategories]);
+  const filteredSubcategories = useMemo(() => {
+    return activeCategoryData?.data || [];
+  }, [activeCategoryData]);
 
   // Reset form when modal opens or template changes
   useEffect(() => {
@@ -186,16 +183,9 @@ export default function TemplateModal({
     }
   }, [formData.task_type, formData.generation_type, generationTypes, isOpen]);
 
-  // Filter subcategories based on chosen category
-  const filteredSubcategories = dbSubcategories.filter(
-    (sub: any) => sub.categoryfor === formData.category
-  );
-
   // Automatically select first subcategory of the active category if none chosen or invalid
   useEffect(() => {
-    const subs = dbSubcategories.filter(
-      (sub: any) => sub.categoryfor === formData.category
-    );
+    const subs = filteredSubcategories;
     if (isOpen) {
       if (subs.length > 0) {
         if (!subs.some((sub: any) => String(sub.id) === formData.subcategory)) {
@@ -214,7 +204,7 @@ export default function TemplateModal({
         }
       }
     }
-  }, [formData.category, dbSubcategories, formData.subcategory, isOpen, defaultSubcategory]);
+  }, [formData.category, filteredSubcategories, formData.subcategory, isOpen, defaultSubcategory]);
 
   if (!isOpen) return null;
 
@@ -249,19 +239,88 @@ export default function TemplateModal({
     );
   };
 
+  const checkVideoDuration = (file: File): Promise<number> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(video.src);
+        resolve(video.duration);
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(video.src);
+        reject("Failed to load video metadata");
+      };
+      video.src = URL.createObjectURL(file);
+    });
+  };
+
+  const validateFile = async (file: File): Promise<boolean> => {
+    const MAX_SIZE = 50 * 1024 * 1024; // 50MB
+    if (file.size > MAX_SIZE) {
+      toast.error(`"${file.name}" exceeds the maximum limit of 50MB.`);
+      return false;
+    }
+
+    if (file.type.startsWith("video/")) {
+      try {
+        const duration = await checkVideoDuration(file);
+        if (duration > 10.05) {
+          toast.error(`"${file.name}" video duration (${Math.round(duration)}s) exceeds maximum allowed 10 seconds.`);
+          return false;
+        }
+      } catch (err) {
+        console.error("Video validation error:", err);
+      }
+    }
+    return true;
+  };
+
   const handleRemoveExistingFile = (id: number) => {
     setExistingFiles((prev) => prev.filter((f) => f.id !== id));
     setDeletedFileIds((prev) => [...prev, id]);
   };
 
-  const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newFiles = Array.from(e.target.files).map((file) => ({
-        file,
-        preview: URL.createObjectURL(file),
-      }));
-      setSelectedFiles((prev) => [...prev, ...newFiles]);
+  const handleFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    const filesArray = Array.from(e.target.files);
+    // If mediaType is Video, restrict to single file upload
+    const filesToProcess = mediaType === "Video" ? [filesArray[0]] : filesArray;
+
+    const validPreviews: PreviewFile[] = [];
+    for (const file of filesToProcess) {
+      const isValid = await validateFile(file);
+      if (isValid) {
+        validPreviews.push({
+          file,
+          preview: URL.createObjectURL(file),
+        });
+      }
     }
+
+    if (validPreviews.length > 0) {
+      if (mediaType === "Video") {
+        setSelectedFiles((prev) => {
+          prev.forEach((f) => URL.revokeObjectURL(f.preview));
+          return validPreviews;
+        });
+      } else {
+        setSelectedFiles((prev) => [...prev, ...validPreviews]);
+      }
+    }
+    e.target.value = "";
+  };
+
+  const handleThumbnailChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    const isValid = await validateFile(file);
+    if (isValid) {
+      setSelectedThumbnail(file);
+      setThumbnailPreview(URL.createObjectURL(file));
+    }
+    e.target.value = "";
   };
 
   const handleRemoveFile = (index: number) => {
@@ -334,10 +393,16 @@ export default function TemplateModal({
                     {selectedFiles.length === 0 && existingFiles.length === 0 ? (
                       <div className="w-full aspect-video bg-[#242424] border border-dashed border-[#555555] rounded-xl flex flex-col items-center justify-center text-[#A3A3A3] cursor-pointer hover:bg-[#2A2A2A] transition-colors relative overflow-hidden group min-h-[140px]">
                         <Video className="w-6 h-6 mb-2 opacity-50" />
-                        <span className="text-xs font-medium text-center px-4">Upload Media Files<br />(Multiple allowed)</span>
+                        <span className="text-xs font-medium text-center px-4">
+                          {mediaType === "Video" ? (
+                            <>Upload Video File<br /><span className="text-[10px] text-[#A3A3A3]">(Max 50MB, Max 10s)</span></>
+                          ) : (
+                            <>Upload Media Files<br /><span className="text-[10px] text-[#A3A3A3]">(Max 50MB)</span></>
+                          )}
+                        </span>
                         <input
                           type="file"
-                          multiple
+                          multiple={mediaType !== "Video"}
                           accept="video/*,image/*"
                           className="absolute inset-0 opacity-0 cursor-pointer"
                           onChange={handleFilesChange}
@@ -397,17 +462,19 @@ export default function TemplateModal({
                             </div>
                           ))}
 
-                          <div className="relative aspect-video rounded-xl overflow-hidden bg-[#242424] border border-dashed border-[#555555] flex flex-col items-center justify-center text-[#A3A3A3] hover:bg-[#2A2A2A] hover:border-white/30 transition-all cursor-pointer min-h-[70px]">
-                            <ImagePlus className="w-5 h-5 mb-1 opacity-70" />
-                            <span className="text-[10px] font-medium">Add Files</span>
-                            <input
-                              type="file"
-                              multiple
-                              accept="video/*,image/*"
-                              className="absolute inset-0 opacity-0 cursor-pointer"
-                              onChange={handleFilesChange}
-                            />
-                          </div>
+                          {mediaType !== "Video" && (
+                            <div className="relative aspect-video rounded-xl overflow-hidden bg-[#242424] border border-dashed border-[#555555] flex flex-col items-center justify-center text-[#A3A3A3] hover:bg-[#2A2A2A] hover:border-white/30 transition-all cursor-pointer min-h-[70px]">
+                              <ImagePlus className="w-5 h-5 mb-1 opacity-70" />
+                              <span className="text-[10px] font-medium">Add Files</span>
+                              <input
+                                type="file"
+                                multiple
+                                accept="video/*,image/*"
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                onChange={handleFilesChange}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -443,19 +510,14 @@ export default function TemplateModal({
                         <>
                           <ImagePlus className="w-6 h-6 mb-2 opacity-50" />
                           <span className="text-xs font-medium">Upload Thumbnail (Video/Image)</span>
+                          <span className="text-[10px] text-[#A3A3A3]">(Max 50MB, Max 10s for Video)</span>
                         </>
                       )}
                       <input
                         type="file"
                         accept="video/*,image/*"
                         className="absolute inset-0 opacity-0 cursor-pointer"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            const file = e.target.files[0];
-                            setSelectedThumbnail(file);
-                            setThumbnailPreview(URL.createObjectURL(file));
-                          }
-                        }}
+                        onChange={handleThumbnailChange}
                       />
                     </div>
                   </div>

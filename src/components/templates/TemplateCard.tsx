@@ -150,7 +150,7 @@ export default function TemplateCard({ template, onEdit, onDelete }: TemplateCar
             )}
             {template.model_name && (
               <span className="px-2 py-0.5 bg-[#2A2A2A] rounded-md border border-[#3E3E3E] font-mono truncate max-w-[200px]" title={template.model_name}>
-                Model: {template.model_name.split("/").pop()}
+                Model: {template.model_name}
               </span>
             )}
           </div>

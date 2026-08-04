@@ -3,72 +3,67 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Plus, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import TemplateCard, { TemplateData } from "@/components/templates/TemplateCard";
 import TemplateModal from "@/components/templates/TemplateModal";
 import CategorySidebar, { CategoryData } from "@/components/templates/CategorySidebar";
-import { useAllCategoriesQuery, useCategoryByIdQuery, useCreateCategoryMutation, useDeleteCategoryMutation, useUpdateCategoryMutation } from "@/redux/feature/categorieSlice";
-import { useAllTemplatesForAdminDashboardQuery, useAllTemplatesQuery, useCreateTemplateMutation, useDeleteTemplateMutation, useGetTemplateByIdQuery, useTemplateConfigQuery, useUpdateTemplateMutation } from "@/redux/feature/teamplateSlice";
+import { useAllCategoriesQuery, useCreateCategoryMutation, useDeleteCategoryMutation, useUpdateCategoryMutation } from "@/redux/feature/categorieSlice";
+import { useAllTemplatesForAdminDashboardQuery, useCreateTemplateMutation, useDeleteTemplateMutation, useTemplateConfigQuery, useUpdateTemplateMutation } from "@/redux/feature/teamplateSlice";
 
 // ---- MOCK DATA ----
 // Unused mock data datasets removed.
 
 type MediaType = "Video" | "Image";
-type TabIndex = 0 | 1 | 2;
 
 export default function TemplatesPage() {
   // Navigation State
   const [mediaType, setMediaType] = useState<MediaType>("Video");
-  const [activeTab, setActiveTab] = useState<TabIndex>(0); // 0: Features, 1: Home, 2: Discover
+  const [activeTab, setActiveTab] = useState<number>(0);
+  const [activeSubcatMap, setActiveSubcatMap] = useState<Record<string, string>>({});
 
-  // --- ACTIVE CATEGORIES BY TAB ---
-  const [activeVidFeatCat, setActiveVidFeatCat] = useState<string>("");
-  const [activeVidHomeCat, setActiveVidHomeCat] = useState<string>("");
-  const [activeVidDiscCat, setActiveVidDiscCat] = useState<string>("");
-  const [activeImgFeatCat, setActiveImgFeatCat] = useState<string>("");
-  const [activeImgHomeCat, setActiveImgHomeCat] = useState<string>("");
-  const [activeImgDiscCat, setActiveImgDiscCat] = useState<string>("");
+  const { data: templateConfigData, isLoading: templateConfigLoading } = useTemplateConfigQuery(undefined);
+  console.log(templateConfigData, '==================TEAPLATE Config DATA');
 
-  const getCurrentActiveCat = (): string => {
-    if (mediaType === "Video") {
-      if (activeTab === 0) return activeVidFeatCat;
-      if (activeTab === 1) return activeVidHomeCat;
-      if (activeTab === 2) return activeVidDiscCat;
-    } else {
-      if (activeTab === 0) return activeImgFeatCat;
-      if (activeTab === 1) return activeImgHomeCat;
-      if (activeTab === 2) return activeImgDiscCat;
+  // Dynamic categories list from API config or fallback defaults
+  const configCategories = useMemo(() => {
+    if (templateConfigData?.data?.categories && Array.isArray(templateConfigData.data.categories) && templateConfigData.data.categories.length > 0) {
+      return templateConfigData.data.categories;
     }
-    return "";
-  };
+    return [
+      { value: "features", label: "Features" },
+      { value: "home", label: "Home" },
+      { value: "discover", label: "Discover" },
+      { value: "custom", label: "Custom" },
+    ];
+  }, [templateConfigData]);
+
+  // Keep activeTab in bounds
+  useEffect(() => {
+    if (activeTab >= configCategories.length && configCategories.length > 0) {
+      setActiveTab(0);
+    }
+  }, [configCategories, activeTab]);
+
+  const activeCategoryObj = configCategories[activeTab] || configCategories[0] || { value: "features", label: "Features" };
+  const categoryfor = activeCategoryObj.value;
+
+  const activeSubcatKey = `${mediaType}_${categoryfor}`;
+  const currentActiveCat = activeSubcatMap[activeSubcatKey] || "";
 
   const updateCurrentActiveCat = (id: string) => {
-    if (mediaType === "Video") {
-      if (activeTab === 0) setActiveVidFeatCat(id);
-      if (activeTab === 1) setActiveVidHomeCat(id);
-      if (activeTab === 2) setActiveVidDiscCat(id);
-    } else {
-      if (activeTab === 0) setActiveImgFeatCat(id);
-      if (activeTab === 1) setActiveImgHomeCat(id);
-      if (activeTab === 2) setActiveImgDiscCat(id);
-    }
+    setActiveSubcatMap((prev) => ({
+      ...prev,
+      [activeSubcatKey]: id,
+    }));
   };
 
-  const currentActiveCat = getCurrentActiveCat();
-
-  //  ---- Category Api ---
-  const categoryfor = activeTab === 0 ? "features" : activeTab === 1 ? "home" : "discover";
+  // ---- Category Api ---
   const { data: categoryData, isLoading: categoryLoading } = useAllCategoriesQuery({ categoryfor });
   const [createCategory] = useCreateCategoryMutation();
   const [updateCategory] = useUpdateCategoryMutation();
   const [deleteCategory] = useDeleteCategoryMutation();
-
-
-
-  const { data: templateConfigData, isLoading: templateConfigLoading } = useTemplateConfigQuery(undefined);
-  // console.log(templateConfigData, '==================TEAPLATE Config DATA');
 
   const { data: allTemplateAdminData, isLoading: allTemplateAdminLoading } = useAllTemplatesForAdminDashboardQuery(undefined);
   console.log(allTemplateAdminData, '==================ALL TEAPLATE Admin DATA');
@@ -114,15 +109,15 @@ export default function TemplatesPage() {
       const itemCategory = item.subcategory_detail?.categoryfor
         ? String(item.subcategory_detail.categoryfor)
         : (typeof item.category === "object" && item.category !== null
-            ? String(item.category.value || item.category.id || "")
-            : String(item.category || ""));
+          ? String(item.category.value || item.category.id || "")
+          : String(item.category || ""));
 
       // Safe subcategory retrieval
       const itemSubcatId = item.subcategory_detail?.id
         ? String(item.subcategory_detail.id)
         : (typeof item.subcategory === "object" && item.subcategory !== null
-            ? String(item.subcategory.id)
-            : String(item.subcategory || ""));
+          ? String(item.subcategory.id)
+          : String(item.subcategory || ""));
 
       const matchesCategory = itemCategory === categoryfor;
       const matchesSubcategory = itemSubcatId === String(currentActiveCat);
@@ -153,10 +148,13 @@ export default function TemplatesPage() {
     return true; // All tabs/views are split screens with categories
   };
 
-  const getTabName = (idx: TabIndex) => {
-    if (idx === 0) return mediaType === "Video" ? "Features Video" : "Features Image";
-    if (idx === 1) return "Home Item";
-    return "Discover Item";
+  const getTabName = (idx: number) => {
+    const cat = configCategories[idx];
+    if (!cat) return "";
+    if (cat.value === "features") {
+      return mediaType === "Video" ? "Features Video" : "Features Image";
+    }
+    return `${cat.label} Item`;
   };
 
   const getCurrentCategories = () => {
@@ -200,6 +198,7 @@ export default function TemplatesPage() {
 
   const handleSaveTemplate = async (data: any, files: File[], thumbnail: File | null, deletedFileIds: number[], existingFiles: any[]) => {
     const isNew = data.id === "new";
+    const toastId = toast.loading(isNew ? "Creating template..." : "Updating template...");
     try {
       const formData = new FormData();
       formData.append("content_type", mediaType.toLowerCase());
@@ -214,43 +213,45 @@ export default function TemplatesPage() {
       formData.append("category", data.category);
       formData.append("subcategory", String(data.subcategory));
 
-      // Fetch remaining existing files as binary File objects to prevent backend type validation failures
+      // Fetch remaining existing files as binary File objects to send under 'files' field name
       const existingFileObjs: File[] = [];
       if (existingFiles && existingFiles.length > 0) {
-        for (const extFile of existingFiles) {
-          if (extFile.file) {
+        const fetchedFiles = await Promise.all(
+          existingFiles.map(async (extFile) => {
+            if (!extFile.file) return null;
             try {
               const res = await fetch(extFile.file);
               const blob = await res.blob();
-              const filename = extFile.file.substring(extFile.file.lastIndexOf("/") + 1).split("?")[0] || "existing_file";
-              const file = new File([blob], filename, { type: blob.type });
-              existingFileObjs.push(file);
+              const filename =
+                extFile.file.substring(extFile.file.lastIndexOf("/") + 1).split("?")[0] || "existing_file";
+              return new File([blob], filename, { type: blob.type });
             } catch (err) {
               console.error("Failed to fetch existing file as binary:", err);
+              return null;
             }
-          }
-        }
+          })
+        );
+        fetchedFiles.forEach((file) => {
+          if (file) existingFileObjs.push(file);
+        });
       }
 
+      // Append newly uploaded files under 'files' key
       if (files && files.length > 0) {
         files.forEach((file) => {
           formData.append("files", file);
         });
       }
+
+      // Append existing retained files under 'files' key
       if (existingFileObjs.length > 0) {
         existingFileObjs.forEach((file) => {
           formData.append("files", file);
         });
       }
+
       if (thumbnail) {
         formData.append("thumbnail", thumbnail);
-      }
-      if (deletedFileIds && deletedFileIds.length > 0) {
-        deletedFileIds.forEach((id) => {
-          formData.append("delete_files", String(id));
-          formData.append("remove_files", String(id));
-          formData.append("deleted_file_ids", String(id));
-        });
       }
 
       let result;
@@ -261,14 +262,14 @@ export default function TemplatesPage() {
       }
 
       if (result?.success) {
-        toast.success(result.message || (isNew ? "Template created successfully." : "Template updated successfully."));
+        toast.success(result.message || (isNew ? "Template created successfully." : "Template updated successfully."), { id: toastId });
         setIsModalOpen(false);
       } else {
-        toast.error("Failed to save template.");
+        toast.error("Failed to save template.", { id: toastId });
       }
     } catch (error: any) {
       console.error("Failed to save template:", error);
-      toast.error(getErrorMessage(error, "Failed to save template."));
+      toast.error(getErrorMessage(error, "Failed to save template."), { id: toastId });
     }
   };
 
@@ -356,7 +357,7 @@ export default function TemplatesPage() {
       const result = await deleteCategory({ id: deleteTargetCat.id }).unwrap();
       if (result?.success) {
         toast.success(result.message || "Category deleted successfully.", { id: toastId });
-        if (getCurrentActiveCat() === deleteTargetCat.id) {
+        if (currentActiveCat === deleteTargetCat.id) {
           updateCurrentActiveCat("");
         }
         setDeleteTargetCat(null);
@@ -402,15 +403,16 @@ export default function TemplatesPage() {
 
       {/* 2. SUB NAVIGATION */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[#3E3E3E] pb-4 mb-6">
-        <div className="flex items-center gap-6">
-          {([0, 1, 2] as TabIndex[]).map((idx) => {
+        <div className="flex items-center gap-6 overflow-x-auto pb-2 scrollbar-none">
+          {configCategories.map((cat: any, idx: number) => {
             const tabName = getTabName(idx);
             return (
               <button
-                key={idx}
+                key={cat.value || idx}
                 onClick={() => setActiveTab(idx)}
-                className={`pb-4 -mb-4 text-sm font-medium transition-colors relative ${activeTab === idx ? "text-[#FF9F05]" : "text-[#A3A3A3] hover:text-white"
-                  }`}
+                className={`pb-4 -mb-4 text-sm font-medium transition-colors relative whitespace-nowrap ${
+                  activeTab === idx ? "text-[#FF9F05]" : "text-[#A3A3A3] hover:text-white"
+                }`}
               >
                 {tabName}
                 {activeTab === idx && (

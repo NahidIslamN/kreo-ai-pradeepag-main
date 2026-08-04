@@ -2,13 +2,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useVerifyEmailMutation, useForgotPasswordMutation } from "@/redux/feature/authSlice";
 import { Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
-export default function VerifyMail() {
+function VerifyMail() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const email = searchParams.get("email") || "";
@@ -213,5 +213,13 @@ export default function VerifyMail() {
                 </button>
             </form>
         </div>
+    );
+}
+
+export default function VerifyMailWithSuspense() {
+    return (
+        <Suspense fallback={<div className="flex h-screen items-center justify-center text-white">Loading...</div>}>
+            <VerifyMail />
+        </Suspense>
     );
 }
